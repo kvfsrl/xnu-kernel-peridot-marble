@@ -560,7 +560,8 @@ geni_transfer(const uint8_t *tx, uint8_t *rx, uint32_t length)
 
 /* ---- SPI by hand, on the same pins ----------------------------------------------------------------- */
 
-static unsigned bitbang_in = PIN_MISO, bitbang_out = PIN_MOSI;
+/* Pin numbers are selected at runtime for each board, so initialize them in bring_up(). */
+static unsigned bitbang_in, bitbang_out;
 
 static void
 bitbang_init(void)
