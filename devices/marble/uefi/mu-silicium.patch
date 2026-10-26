@@ -2,7 +2,7 @@ diff --git a/BootShim/BootShim.S b/BootShim/BootShim.S
 index 4d20855..3c3b17b 100644
 --- a/BootShim/BootShim.S
 +++ b/BootShim/BootShim.S
-@@ -28,6 +28,30 @@ _CopyLoop:
+@@ -28,6 +28,31 @@ _CopyLoop:
    stp   x2, x3, [x5], #16
    subs  x6, x6, #16
    b.ne  _CopyLoop
@@ -15,7 +15,8 @@ index 4d20855..3c3b17b 100644
 +  cmp   w2, w3
 +  b.ne  _NoPayload
 +  ldr   w6, [x4, #4]    /* Payload Size */
-+  movz  x7, #0x3fff, lsl #12 /* Keep the copy inside the reserved payload window */
++  movz  x7, #0x03ff, lsl #16 /* Maximum payload is 64 MiB minus 4 KiB */
++  movk  x7, #0xf000
 +  cmp   x6, x7
 +  b.hi  _NoPayload
 +  add   x6, x6, #23     /* Header + Round Up to 16 */
