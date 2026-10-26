@@ -30,8 +30,8 @@ import sys
 
 path = Path(sys.argv[1])
 source = path.read_text()
-anchor = '  {"VM PIL",             0xE0000000, 0x05700000, AddMem, SYS_MEM, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},\n'
-region = '  {"XNU Payload",        0xF0000000, 0x04000000, AddMem, SYS_MEM, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},\n'
+anchor = '  {"TZApps Reserved",    0xEA000000, 0x07400000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},\n'
+region = '  {"XNU Payload",        0xF2000000, 0x04000000, AddMem, SYS_MEM, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},\n'
 if region not in source:
     if anchor not in source:
         raise SystemExit(f"cannot reserve the Marble XNUP buffer in {path}")

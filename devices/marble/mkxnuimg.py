@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MU = Path(os.environ.get("MU_DIR", ROOT / "Mu-Silicium-marble"))
 FD_BASE = 0xA7100000
 FD_SIZE = 0x300000
-PAYLOAD_BASE = 0xF0000000
+PAYLOAD_BASE = 0xF2000000
 PAYLOAD_MAX = 0x04000000
 BOOT_HEADER_VERSION = 1  # Keep the legacy load-address fields for fastboot boot.
 

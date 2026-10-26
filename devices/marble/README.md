@@ -21,6 +21,9 @@ Marble device tree. `uefi/apply.sh` overlays HackiOS's XNUP handoff on that
 platform. `build-uefi.sh` builds a loader-only Android boot image for
 `fastboot boot`; it never flashes the phone.
 
+The XNUP transfer buffer is reserved at `0xF2000000` for 64 MiB. This sits
+between the Marble TZApps reserved region and the UEFI DXE heap without overlap.
+
 The public Marble DTBO maps the primary touch controller to FocalTech FT3658U
 on QUPv3 SE4 (`0x990000`), with GPIO 20 reset, GPIO 21 interrupt, and a
 1080×2340 panel. `marble_touch=1` selects this wiring and a conservative
