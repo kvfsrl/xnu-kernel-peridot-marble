@@ -43,6 +43,11 @@ extern vm_offset_t ml_io_map_wcomb(vm_offset_t phys_addr, vm_size_t size);
 extern kern_return_t thread_terminate(thread_t thread);
 
 static vm_offset_t tlmm, gcc, se, rsc, cmd_db;
+static bool marble_touch;
+static uint32_t focaltech_max_x = 10800, focaltech_max_y = 24000;
+static unsigned pin_miso = 52, pin_mosi = 53, pin_clk = 54, pin_cs = 55;
+static unsigned pin_int = 81, pin_reset = 105, pin_avdd = 107;
+static vm_offset_t tlmm_phys = 0x0f100000UL, se_phys = 0x00a94000UL;
 
 static inline uint32_t
 rd(vm_offset_t address)
@@ -70,23 +75,22 @@ sleep_ms(uint32_t ms)
 
 /* ---- pins (TLMM) ------------------------------------------------------------------------------- */
 
-#define TLMM_PHYS               0x0f100000UL
 #define TLMM_SIZE               0x100000UL
 #define GPIO_CFG(n)             (tlmm + 0x1000UL * (n))         /* [1:0] pull, [5:2] function, [8:6] drive, [9] output */
 #define GPIO_IO(n)              (tlmm + 0x1000UL * (n) + 4)     /* bit 0 in, bit 1 out */
 #define PULL_NONE               0
 #define PULL_UP                 3
 
-#define PIN_MISO                52
-#define PIN_MOSI                53
-#define PIN_CLK                 54
-#define PIN_CS                  55
-#define PIN_INT                 81      /* low = the chip has a report */
-#define PIN_RESET               105     /* low = in reset */
-#define PIN_AVDD                107     /* high = analog supply on */
 #define PIN_FOCALTECH_ID        68      /* FocalTech if this reads 0 ... */
 #define PIN_GOODIX_ID           96      /* ... and this reads 1 (sm8350-kernel-OKX convention) */
 #define PIN_FUNCTION_SPI        1       /* "qup15" */
+#define PIN_MISO                pin_miso
+#define PIN_MOSI                pin_mosi
+#define PIN_CLK                 pin_clk
+#define PIN_CS                  pin_cs
+#define PIN_INT                 pin_int
+#define PIN_RESET               pin_reset
+#define PIN_AVDD                pin_avdd
 
 static void
 gpio_configure(unsigned pin, unsigned function, unsigned pull, unsigned ma, bool output)
@@ -351,7 +355,6 @@ clocks_on(void)
 
 /* ---- SPI through the serial engine (GENI) ---------------------------------------------------------- */
 
-#define SE_PHYS                 0x00a94000UL
 #define SE_SIZE                 0x4000UL
 #define GENI_FORCE_DEFAULT      (se + 0x020)
 #define GENI_OUTPUT_CTRL        (se + 0x024)
@@ -913,6 +916,8 @@ goodix_poll(void)
 #define FOCALTECH_TOUCH_DATA        0x01		/* the touch report lives at this address */
 #define FOCALTECH_MAX_TOUCHES       10
 #define FOCALTECH_TOUCH_REPORT_LEN  (2 + 6 * FOCALTECH_MAX_TOUCHES)
+#define MARBLE_FOCALTECH_MAX_TOUCHES 5
+#define MARBLE_FOCALTECH_REPORT_LEN (3 + 6 * MARBLE_FOCALTECH_MAX_TOUCHES)
 #define FOCALTECH_MAX_TRANSFER      (7 + FOCALTECH_TOUCH_REPORT_LEN + 2)
 
 static uint8_t focaltech_tx[FOCALTECH_MAX_TRANSFER], focaltech_rx[FOCALTECH_MAX_TRANSFER];
@@ -1140,6 +1145,20 @@ focaltech_probe(bool verbose)
 {
 	uint8_t high = 0, low = 0;
 
+	/* Marble's DTBO identifies an FT3658U. Never reset it or upload Redwood's FT3680 image. */
+	if (marble_touch) {
+		if (focaltech_read(FOCALTECH_CHIP_ID_H, &high, 1) &&
+		    focaltech_read(FOCALTECH_CHIP_ID_L, &low, 1) &&
+		    high != 0 && high != 0xff && low != 0 && low != 0xff) {
+			printf("focaltech: Marble runtime ID %02x %02x; leaving controller firmware untouched\n", high, low);
+			return true;
+		}
+		if (verbose) {
+			printf("focaltech: Marble FT3658U did not return a valid runtime ID (%02x %02x)\n", high, low);
+		}
+		return false;
+	}
+
 	/* Maybe firmware is already running (previous session, warm boot). */
 	if (focaltech_wait_valid(&high, &low)) {
 		return true;
@@ -1242,9 +1261,6 @@ focaltech_contact_update(uint32_t id, uint32_t event, uint32_t x, uint32_t y,
 	}
 }
 
-/* Panel size in the FT3680 super-high-resolution reports (device tree x_max/y_max on redwood). */
-static uint32_t focaltech_max_x = 10800, focaltech_max_y = 24000;
-
 static void
 focaltech_report(const uint8_t *report)
 {
@@ -1278,14 +1294,46 @@ focaltech_report(const uint8_t *report)
 	}
 }
 
+/* FT3658U's 12-bit, five-contact report described by the Marble device tree. */
+static void
+marble_focaltech_report(const uint8_t *report)
+{
+	uint32_t count = report[2] & 0x0f;
+
+	if (count > MARBLE_FOCALTECH_MAX_TOUCHES) {
+		count = MARBLE_FOCALTECH_MAX_TOUCHES;
+	}
+	for (uint32_t i = 0; i < FOCALTECH_MAX_TOUCHES; i++) {
+		focaltech_contact[i].seen = false;
+	}
+	for (uint32_t i = 0; i < count; i++) {
+		const uint8_t *touch = report + 3 + 6 * i;
+		uint32_t id = (touch[2] >> 4) & 0x0f;
+		uint32_t event = (touch[0] >> 6) & 0x03;
+		uint32_t x = ((uint32_t)(touch[0] & 0x0f) << 8) | touch[1];
+		uint32_t y = ((uint32_t)(touch[2] & 0x0f) << 8) | touch[3];
+
+		if (id < MARBLE_FOCALTECH_MAX_TOUCHES && x < focaltech_max_x && y < focaltech_max_y) {
+			focaltech_contact_update(id, event, x, y, focaltech_max_x, focaltech_max_y);
+		}
+	}
+	for (uint32_t i = 0; i < FOCALTECH_MAX_TOUCHES; i++) {
+		if (!focaltech_contact[i].seen && focaltech_contact[i].down) {
+			focaltech_contact[i].down = false;
+			hakios_touch_post(HAKIOS_TOUCH_UP, i, focaltech_contact[i].x, focaltech_contact[i].y);
+		}
+	}
+}
+
 static void
 focaltech_poll(void)
 {
 	static uint8_t report[FOCALTECH_TOUCH_REPORT_LEN];
+	uint32_t report_length = marble_touch ? MARBLE_FOCALTECH_REPORT_LEN : sizeof(report);
 	static unsigned bad;
 
 	seen.polls++;
-	if (!focaltech_read(FOCALTECH_TOUCH_DATA, report, sizeof(report))) {
+	if (!focaltech_read(FOCALTECH_TOUCH_DATA, report, report_length)) {
 		seen.bad++;
 		if (bad++ < 8) {
 			printf("focaltech: SPI read failed for touch report\n");
@@ -1293,7 +1341,11 @@ focaltech_poll(void)
 		return;
 	}
 	seen.reports++;
-	focaltech_report(report);
+	if (marble_touch) {
+		marble_focaltech_report(report);
+	} else {
+		focaltech_report(report);
+	}
 }
 
 /* Which touch chip is on this board. */
@@ -1336,6 +1388,12 @@ chip_poll(void)
 static void
 show_state(const char *when)
 {
+	if (marble_touch) {
+		printf("marble-touch: %s: reset=%u irq=%u cs=%u clk=%u mosi=%u miso=%u\n", when,
+		    gpio_get(PIN_RESET), gpio_get(PIN_INT), gpio_get(PIN_CS), gpio_get(PIN_CLK),
+		    gpio_get(PIN_MOSI), gpio_get(PIN_MISO));
+		return;
+	}
 	printf("goodix: %s: votes %#x, clocks %#x %#x %#x, rate cfg %#x dfs %#x; pins cs/clk/mosi/miso cfg %#x %#x %#x %#x,"
 	    " reset %#x/%u, int %#x/%u, avdd %#x/%u, straps %u %u\n", when, rd(GCC_VOTE), rd(GCC_QUP1_M_AHB_CBCR),
 	    rd(GCC_QUP1_S_AHB_CBCR), rd(GCC_QUP1_SE5_CBCR), rd(GCC_QUP1_SE5_CFG), rd(GCC_QUP1_SE5_DFSR), rd(GPIO_CFG(PIN_CS)),
@@ -1348,9 +1406,18 @@ show_state(const char *when)
 static void
 power_on(void)
 {
+	if (marble_touch) {
+		/* Use only the documented reset/IRQ pins; the L3C regulator is not a GPIO. */
+		gpio_output(PIN_RESET, true, PULL_UP, 8);
+		gpio_configure(PIN_INT, 0, PULL_UP, 8, false);
+		sleep_ms(15);
+		return;
+	}
 	gpio_output(PIN_RESET, false, PULL_UP, 8);
 	gpio_configure(PIN_INT, 0, PULL_UP, 8, false);
-	io_supply_on();
+	if (!marble_touch) {
+		io_supply_on();
+	}
 	sleep_ms(3);
 	gpio_output(PIN_AVDD, true, PULL_NONE, 2);
 	sleep_ms(15);
@@ -1376,13 +1443,23 @@ bring_up(void)
 {
 	const char *problem = "its clocks cannot be turned on";
 
-	show_state("as found");
-	touch_chip = touch_chip_detect();
-	printf("goodix: ID gpio96=%u gpio68=%u: selected %s\n", gpio_get(PIN_GOODIX_ID),
-	    gpio_get(PIN_FOCALTECH_ID), chip_name());
+	if (marble_touch) {
+		touch_chip = TOUCH_FOCALTECH;
+		focaltech_max_x = 1080;
+		focaltech_max_y = 2340;
+		printf("marble-touch: FT3658U on QUPv3 SE4; GPIO MISO/MOSI/CLK/CS=%u/%u/%u/%u reset=%u irq=%u, bit-banged SPI\n",
+		    PIN_MISO, PIN_MOSI, PIN_CLK, PIN_CS, PIN_RESET, PIN_INT);
+	} else {
+		show_state("as found");
+		touch_chip = touch_chip_detect();
+	}
+	if (!marble_touch) {
+		printf("goodix: ID gpio96=%u gpio68=%u: selected %s\n", gpio_get(PIN_GOODIX_ID),
+		    gpio_get(PIN_FOCALTECH_ID), chip_name());
+	}
 	power_on();
 
-	if (clocks_on()) {
+	if (!marble_touch && clocks_on()) {
 		printf("goodix: serial engine: firmware %#x, interface %#x, parameters %#x, source clock %u Hz (select %u)\n",
 		    rd(GENI_FW_REVISION_RO), rd(GENI_IF_DISABLE_RO), rd(SE_HW_PARAM_0), se_source_hz, se_clock_select);
 		uint32_t spi_hz = 1000000;
@@ -1403,7 +1480,7 @@ bring_up(void)
 			return true;
 		}
 		printf("goodix: %s did not answer through the serial engine; trying the pins by hand\n", chip_name());
-	} else {
+	} else if (!marble_touch) {
 		printf("goodix: %s; driving the pins by hand\n", problem);
 	}
 
@@ -1445,11 +1522,30 @@ goodix_thread(__unused void *parameter, __unused wait_result_t result)
 	}
 	idle_looks = 80000 / poll_us;   /* a report read every 80 ms even with the line high, in case it is missed */
 
-	tlmm = ml_io_map(TLMM_PHYS, TLMM_SIZE);
-	gcc = ml_io_map(GCC_PHYS, GCC_SIZE);
-	se = ml_io_map(SE_PHYS, SE_SIZE);
-	rsc = ml_io_map(RSC_PHYS, RSC_SIZE);
-	cmd_db = ml_io_map_wcomb(CMD_DB_PHYS, CMD_DB_SIZE);      /* memory, not registers: no alignment rules */
+	{
+		uint32_t marble_arg = 0;
+
+		if (PE_parse_boot_argn("marble_touch", &marble_arg, sizeof(marble_arg)) && marble_arg) {
+			marble_touch = true;
+		}
+	}
+	if (marble_touch) {
+		tlmm_phys = 0x0f000000UL;
+		se_phys = 0x00990000UL;
+		pin_miso = 16;
+		pin_mosi = 17;
+		pin_clk = 18;
+		pin_cs = 19;
+		pin_reset = 20;
+		pin_int = 21;
+	}
+	tlmm = ml_io_map(tlmm_phys, TLMM_SIZE);
+	if (!marble_touch) {
+		gcc = ml_io_map(GCC_PHYS, GCC_SIZE);
+		se = ml_io_map(se_phys, SE_SIZE);
+		rsc = ml_io_map(RSC_PHYS, RSC_SIZE);
+		cmd_db = ml_io_map_wcomb(CMD_DB_PHYS, CMD_DB_SIZE);      /* memory, not registers: no alignment rules */
+	}
 
 	if (!bring_up()) {
 		printf("goodix: no %s touch screen\n", chip_name());

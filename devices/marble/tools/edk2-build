@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""Reassemble EDK2 flags split by Mu's shell command when paths contain spaces."""
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+fixed = []
+i = 0
+while i < len(args):
+	arg = args[i]
+	if arg == "-y" or arg == "-D":
+		option = arg
+		i += 1
+		parts = []
+		while i < len(args) and not args[i].startswith("-"):
+			parts.append(args[i])
+			i += 1
+		if not parts:
+			raise SystemExit(f"{option} requires a value")
+		fixed.extend((option, " ".join(parts)))
+		continue
+	fixed.append(arg)
+	i += 1
+
+tools = Path(os.environ.get("EDK_TOOLS_PATH", ""))
+build = tools / "BinWrappers/PosixLike/build"
+if not build.is_file():
+	raise SystemExit(f"EDK2 build wrapper not found: {build}")
+sys.exit(subprocess.run([str(build), *fixed], check=False).returncode)

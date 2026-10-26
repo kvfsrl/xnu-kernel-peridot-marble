@@ -4,20 +4,15 @@ This overlays the XNUP payload handoff onto Project Silicium's Mu-Silicium
 revision in `BASE`, which already contains the Marble UEFI platform package.
 
 ```sh
-devices/marble/uefi/apply.sh
-python3 -m venv .venv-marble
-. .venv-marble/bin/activate
-pip install -r Mu-Silicium-marble/pip-requirements.txt
-cd Mu-Silicium-marble
-python3 build_uefi.py -d marble -r RELEASE
-cd ../..
-xnuloader/build.sh
+MU_DIR=/path/to/Mu-Silicium devices/marble/build-uefi.sh
 ```
 
-The UEFI build requires Mu-Silicium's submodules and device-binary package.
-Firmware binaries remain dependencies of Mu-Silicium and are not copied into
-this repository.
+The script checks out the pinned platform patch, builds Mu-Silicium's Marble
+package and BootShim, then creates `devices/marble/out/marble-uefi.img` without
+an XNUP payload. The image starts UEFI/XNULoader so the host can upload a kernel
+and ramdisks through `xl`. Firmware binaries remain dependencies of Mu-Silicium
+and are not copied into this repository.
 
-To package the UEFI image for `fastboot boot`, build the XNU kernel and loader
-payload first, then run `devices/marble/mkxnuimg.py -p run-payload.bin -o
-marble-boot.img`.
+Run `devices/marble/build-userland.sh` to create the APFS images with
+PosterBoard's launch angel included, then `devices/marble/run.sh` from stock
+fastboot. The phone must already be unlocked for `fastboot boot`.

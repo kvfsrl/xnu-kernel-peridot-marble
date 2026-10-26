@@ -1,0 +1,107 @@
+name: marble
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [marble]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marble-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/powershell /usr/local/lib/node_modules \
+            /usr/local/share/chromium /usr/local/share/edge /usr/share/az_* \
+            /usr/local/share/boost
+          sudo apt-get clean
+          df -h /
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y 7zip build-essential git curl clang lld llvm nasm \
+            gcc-aarch64-linux-gnu python3 python3-pip python3-venv uuid-dev \
+            libtinfo6 flex bison m4 autoconf automake xz-utils libxml2-dev \
+            acpica-tools jq
+          sudo ln -sf /usr/bin/7zz /usr/local/bin/7z
+          7z i | grep -i apfs
+
+      - name: Theos cctools and iOS SDK for XNU
+        run: |
+          export THEOS="$HOME/theos"
+          mkdir -p "$THEOS/toolchain" "$THEOS/sdks"
+          curl -fsSL https://github.com/L1ghtmann/llvm-project/releases/latest/download/iOSToolchain-x86_64.tar.xz \
+            | tar -xJ -C "$THEOS/toolchain"
+          url=$(curl -fsSL https://api.github.com/repos/theos/sdks/releases/latest \
+            | jq -r '.assets[] | select(.name=="iPhoneOS16.5.sdk.tar.xz") | .browser_download_url')
+          test -n "$url"
+          curl -fsSL "$url" | tar -xJ -C "$THEOS/sdks"
+          test -x "$THEOS/toolchain/linux/iphone/bin/ld"
+          test -d "$THEOS/sdks/iPhoneOS16.5.sdk/usr/include"
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+
+      - name: Prepare XNU and build Marble touch support
+        run: |
+          ./xnu/apply.sh
+          ./xnu-deps/setup.sh
+          mkdir -p xnu-src/xnu-8796.121.2/BUILD/obj/DEVELOPMENT_ARM64_BCM2837/bsd/DEVELOPMENT
+          touch out-kernel-start
+          BUILD_STATUS=0
+          MACHINE=BCM2837 ./xnu-build.sh -j"$(nproc)" -k > kernel-build.log 2>&1 || BUILD_STATUS=$?
+          K=xnu-src/xnu-8796.121.2/BUILD/obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837
+          if ! test -s "$K" || ! test "$K" -nt out-kernel-start || \
+            ! grep -q 'built kernel at .*mach.development.bcm2837' kernel-build.log || \
+            grep -q 'error:' kernel-build.log; then
+            tail -100 kernel-build.log
+            exit 1
+          fi
+          if [ "$BUILD_STATUS" -ne 0 ]; then
+            grep -q 'check_all_exports.*Error 1' kernel-build.log || {
+              tail -100 kernel-build.log
+              exit 1
+            }
+            echo "Kernel linked; XNU's unrelated symbolset audit failed after link."
+          fi
+          stat -c 'Marble XNU kernel: %s bytes' "$K"
+
+      - name: Prepare Mu-Silicium Marble platform
+        run: |
+          ./devices/marble/uefi/apply.sh
+          D=Mu-Silicium-marble/Mu_Basecore/BaseTools/Bin/mu_nasm_extdep
+          mkdir -p "$D/Linux-x86-64"
+          echo 'version: 20016.1.1' > "$D/extdep_state.yaml"
+          ln -sf /usr/bin/nasm "$D/Linux-x86-64/nasm"
+          ln -sf /usr/bin/ndisasm "$D/Linux-x86-64/ndisasm"
+
+      - name: Build Marble UEFI loader image
+        run: ./devices/marble/build-uefi.sh
+
+      - name: Fetch iOS 16.5 files and build wallpaper userland
+        run: |
+          ./sysimage/fetch.sh
+          REST=1 PREBUILT=1 ./devices/marble/build-userland.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: marble-build
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            devices/marble/out/marble-uefi.img
+            userland/root.apfs
+            userland/system.apfs
+            xnu-src/xnu-8796.121.2/BUILD/obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837
+            kernel-build.log

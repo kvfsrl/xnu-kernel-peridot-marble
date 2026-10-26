@@ -3,6 +3,7 @@
 import argparse
 import gzip
 import os
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -15,7 +16,7 @@ PAYLOAD_BASE = 0xF0000000
 PAYLOAD_MAX = 0x04000000
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-p", "--payload", required=True)
+parser.add_argument("-p", "--payload", help="XNUP payload; omit to boot the UEFI/XNULoader only")
 parser.add_argument("-o", "--output", default=str(ROOT / "marble-boot.img"))
 parser.add_argument("--mode", default="RELEASE")
 args = parser.parse_args()
@@ -25,22 +26,32 @@ if not fd_path.is_file():
     raise SystemExit(f"UEFI image not found: {fd_path}; build marblePkg first")
 
 shim_dir = MU / "BootShim"
-for name in ("BootShim.elf", "BootShim.bin"):
-    try:
-        (shim_dir / name).unlink()
-    except FileNotFoundError:
-        pass
 subprocess.check_call([
-    "make", "REQUIRES_KERNEL_HEADER=1", f"FD_BASE={FD_BASE:#x}",
-    f"FD_SIZE={FD_SIZE:#x}", f"CFLAGS=--target=aarch64-linux-gnu -DPAYLOAD_BASE={PAYLOAD_BASE:#x}",
+    "clang", "--target=aarch64-linux-gnu", "-c", "BootShim.S", "-o", "BootShim.elf",
+    "-DREQUIRES_KERNEL_HEADER=1", f"-DFD_BASE={FD_BASE:#x}", f"-DFD_SIZE={FD_SIZE:#x}",
+    f"-DPAYLOAD_BASE={PAYLOAD_BASE:#x}",
 ], cwd=shim_dir)
 
-shim = (shim_dir / "BootShim.bin").read_bytes()
+# BootShim.S is a single .text section. Extract it directly so packaging does not
+# depend on the host's llvm-objcopy shared-library version.
+elf = (shim_dir / "BootShim.elf").read_bytes()
+if elf[:6] != b"\x7fELF\x02\x01":
+    raise SystemExit("BootShim build did not produce little-endian ELF64")
+shoff = struct.unpack_from("<Q", elf, 40)[0]
+shentsize, shnum, shstrndx = struct.unpack_from("<HHH", elf, 58)
+sections = [struct.unpack_from("<IIQQQQIIQQ", elf, shoff + i * shentsize) for i in range(shnum)]
+strings = sections[shstrndx]
+names = elf[strings[4]:strings[4] + strings[5]]
+text_section = next(s for s in sections if names[s[0]:].split(b"\0", 1)[0] == b".text")
+shim = elf[text_section[4]:text_section[4] + text_section[5]]
+if not shim:
+    raise SystemExit("BootShim .text section is empty")
+
 fd = fd_path.read_bytes()
 if len(fd) != FD_SIZE:
     raise SystemExit(f"unexpected Marble UEFI FD size: {len(fd):#x}, expected {FD_SIZE:#x}")
-payload = Path(args.payload).read_bytes()
-if payload[:4] != b"XNUP" or len(payload) > PAYLOAD_MAX - 0x1000:
+payload = Path(args.payload).read_bytes() if args.payload else b""
+if payload and (payload[:4] != b"XNUP" or len(payload) > PAYLOAD_MAX - 0x1000):
     raise SystemExit("payload is not a valid Marble-sized XNUP container")
 
 blob = shim + fd + payload

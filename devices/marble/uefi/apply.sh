@@ -11,14 +11,37 @@ if [[ ! -d "$MU/.git" ]]; then
 	git -C "$MU" submodule update --init --recursive
 fi
 
-if ! git -C "$MU" apply --check "$HERE/mu-silicium.patch"; then
+if git -C "$MU" apply --check "$HERE/mu-silicium.patch" >/dev/null 2>&1; then
+	git -C "$MU" apply --whitespace=nowarn "$HERE/mu-silicium.patch"
+elif ! git -C "$MU" apply --reverse --check "$HERE/mu-silicium.patch" >/dev/null 2>&1; then
 	echo "Marble UEFI patch does not apply cleanly to $MU" >&2
 	exit 1
 fi
-git -C "$MU" apply --whitespace=nowarn "$HERE/mu-silicium.patch"
 install -m 0644 "$HERE/files/Silicon/Silicium/SiliciumPkg/Library/BootManagerLib/XnuLoader.c" \
 	"$MU/Silicon/Silicium/SiliciumPkg/Library/BootManagerLib/XnuLoader.c"
 install -m 0644 "$HERE/files/Silicon/Silicium/SiliciumPkg/Library/BootManagerLib/XnuLoader.h" \
 	"$MU/Silicon/Silicium/SiliciumPkg/Library/BootManagerLib/XnuLoader.h"
 install -m 0644 "$HERE/files/Resources/Configs/marble.toml" "$MU/Resources/Configs/marble.toml"
-echo "Applied HackiOS XNUP handoff to Mu-Silicium Marble."
+install -D -m 0644 "$HERE/files/Platforms/Xiaomi/marble/AcpiTables.inf" \
+	"$MU/Silicium-ACPI/Platforms/Xiaomi/marble/AcpiTables.inf"
+python3 - "$MU/Platforms/Xiaomi/marblePkg/DeviceBuild.py" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+source = path.read_text()
+anchor = '        logging.debug ("PlatformBuilder SetPlatformEnv")\n'
+setting = '        self.env.SetValue ("EDK_BUILD_CMD", os.environ.get("EDK_BUILD_CMD", "build"), "Marble build wrapper")\n'
+workspace = '    WorkspaceRoot = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))\n'
+workspace_alias = '    WorkspaceRoot = os.environ.get("MU_ALIAS", os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))\n'
+if setting not in source:
+    if anchor not in source:
+        raise SystemExit(f"cannot add path-safe EDK2 command to {path}")
+    source = source.replace(anchor, anchor + setting, 1)
+if workspace_alias not in source:
+    if workspace not in source:
+        raise SystemExit(f"cannot use the no-space Mu workspace alias in {path}")
+    source = source.replace(workspace, workspace_alias, 1)
+path.write_text(source)
+PY
+echo "HackiOS XNUP handoff and Marble ACPI table manifest are present in Mu-Silicium."

@@ -15,6 +15,9 @@
 !/LEGAL.md
 !/COMPLIANCE.md
 !/THIRD_PARTY_LICENSES.md
+!/.github/
+!/.github/workflows/
+!/.github/workflows/*.yml
 !/devices/
 !/docs/
 !/xl

@@ -18,9 +18,15 @@ images are not stored in this repository.
 
 `uefi/BASE` pins the Mu-Silicium revision that includes `marblePkg` and the
 Marble device tree. `uefi/apply.sh` overlays HackiOS's XNUP handoff on that
-platform. See `uefi/README.md` for the build command.
+platform. `build-uefi.sh` builds a loader-only Android boot image for
+`fastboot boot`; it never flashes the phone.
 
-The UEFI DTB is the public Marble platform DTB used by Mu-Silicium. Touch
-controller details still need confirmation from the phone's Android DTB; the
-Android DTB must be pulled from the actual Marble device before enabling a
-controller-specific address or bus in XNU.
+The public Marble DTBO maps the primary touch controller to FocalTech FT3658U
+on QUPv3 SE4 (`0x990000`), with GPIO 20 reset, GPIO 21 interrupt, and a
+1080×2340 panel. `marble_touch=1` selects this wiring and a conservative
+GPIO-driven SPI path. It does not reset the controller or upload firmware.
+The report format still needs validation against a live phone.
+
+`build-userland.sh` includes iOS launch angels on demand (`REST=1`), including
+PosterBoard when its executable is present in the selected system image.
+Wallpaper rendering still needs verification on the target phone.
