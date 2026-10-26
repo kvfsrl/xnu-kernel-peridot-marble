@@ -14,7 +14,7 @@ done
 ./devices/marble/build-uefi.sh
 export XL_MKXNUIMG=devices/marble/mkxnuimg.py
 export XL_LOADER=xnuloader/loader.efi
-./xnuloader/build.sh
+PLATFORM=marble ./xnuloader/build.sh
 
 ./xl ramdisk "$SYSTEM_IMAGE"
 echo "Starting Marble userland with touch enabled; PosterBoard is available on demand."

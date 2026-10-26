@@ -65,7 +65,7 @@ jobs:
       - name: Compile Marble-aware XNU loader
         run: |
           PLACEHOLDER=1 xnuloader/mkidentity.sh
-          xnuloader/build.sh
+          PLATFORM=marble xnuloader/build.sh
 
       - name: Prepare XNU and build Marble touch support
         run: |

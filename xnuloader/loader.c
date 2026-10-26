@@ -3935,7 +3935,12 @@ efi_main(efi_handle image, efi_system_table *st)
 	print("CurrentEL=%x MIDR=%x MMFR0=%x CNTFRQ=%d image=%x\n", READ_SYSREG(CurrentEL) >> 2, READ_SYSREG(MIDR_EL1),
 	    READ_SYSREG(ID_AA64MMFR0_EL1), READ_SYSREG(CNTFRQ_EL0), (uint64_t)(uintptr_t)&__ImageBase);
 
+#ifdef MARBLE_BUILD
+	PLAT = &platform_marble;
+	payload_base = 0xF2000000ULL;
+#else
 	PLAT = &platform_qemu_virt;
+#endif
 	if (EFI_ERROR(BS->locate_protocol(&gop_guid, NULL, (void **)&GOP)) || GOP->mode == NULL ||
 	    GOP->mode->info == NULL || GOP->mode->fb_base == 0) {
 		GOP = NULL;                     /* no display (QEMU without -device ramfb) */
@@ -3946,11 +3951,14 @@ efi_main(efi_handle image, efi_system_table *st)
 		SCREEN.stride = GOP->mode->info->pixels_per_scanline * 4;
 		if (SCREEN.base == 0xE1000000ULL) {
 			PLAT = &platform_redwood;
+			payload_base = 0xF0000000ULL;
 		} else if (SCREEN.base == 0xB8000000ULL) {
 			PLAT = &platform_marble;
 			payload_base = 0xF2000000ULL;
 		} else {
+#ifndef MARBLE_BUILD
 			ramfb_phone_screen();
+#endif
 		}
 		print("display %d x %d at %x\n", (uint64_t)SCREEN.width, (uint64_t)SCREEN.height, SCREEN.base);
 	}
