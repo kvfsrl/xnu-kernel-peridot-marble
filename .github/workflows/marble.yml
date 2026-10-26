@@ -31,8 +31,9 @@ jobs:
       - name: Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y 7zip build-essential git curl clang lld llvm nasm \
-            gcc-aarch64-linux-gnu python3 python3-pip python3-venv uuid-dev \
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            7zip build-essential git curl clang lld llvm nasm \
+            python3 python3-pip python3-venv uuid-dev \
             libtinfo6 flex bison m4 autoconf automake xz-utils libxml2-dev \
             acpica-tools jq
           sudo ln -sf /usr/bin/7zz /usr/local/bin/7z
