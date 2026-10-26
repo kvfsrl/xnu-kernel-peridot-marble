@@ -6,6 +6,7 @@ import os
 import struct
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,6 +15,9 @@ FD_BASE = 0xA7100000
 FD_SIZE = 0x300000
 PAYLOAD_BASE = 0xF0000000
 PAYLOAD_MAX = 0x04000000
+CONFIG = MU / "Resources/Configs/marble.toml"
+with CONFIG.open("rb") as config_file:
+    BOOT_HEADER_VERSION = tomllib.load(config_file)["boot_image"]["header_version"]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-p", "--payload", help="XNUP payload; omit to boot the UEFI/XNULoader only")
@@ -62,8 +66,8 @@ try:
     subprocess.check_call([
         sys.executable, str(MU / "Resources/Scripts/mkbootimg.py"),
         "--kernel", str(kernel_path), "--ramdisk", str(MU / "Resources/ramdisk"),
-        "--header_version", "1", "-o", args.output,
+        "--header_version", str(BOOT_HEADER_VERSION), "-o", args.output,
     ])
 finally:
     kernel_path.unlink(missing_ok=True)
-print(f"{args.output}: {Path(args.output).stat().st_size} bytes; UEFI={len(fd)} payload={len(payload)}")
+print(f"{args.output}: {Path(args.output).stat().st_size} bytes; header=v{BOOT_HEADER_VERSION} UEFI={len(fd)} payload={len(payload)}")

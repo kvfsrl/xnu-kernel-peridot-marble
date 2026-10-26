@@ -97,12 +97,20 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: marble-build
+          name: marble-boot
           if-no-files-found: warn
           retention-days: 14
           path: |
             devices/marble/out/marble-uefi.img
-            userland/root.apfs
-            userland/system.apfs
             xnu-src/xnu-8796.121.2/BUILD/obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837
             kernel-build.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: marble-userland
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            userland/root.apfs
+            userland/system.apfs
