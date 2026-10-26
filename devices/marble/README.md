@@ -18,8 +18,10 @@ images are not stored in this repository.
 
 `uefi/BASE` pins the Mu-Silicium revision that includes `marblePkg` and the
 Marble device tree. `uefi/apply.sh` overlays HackiOS's XNUP handoff on that
-platform. `build-uefi.sh` builds a loader-only Android boot image for
-`fastboot boot`; it never flashes the phone.
+platform. `build-uefi.sh` builds the Marble firmware image. `run.sh` builds
+the matching XNU loader, packages it with the Marble Shim, and enters it through
+`fastboot boot`; it never flashes the phone. Keep the loader, Shim, and UEFI
+payload base at `0xF2000000` together.
 
 The XNUP transfer buffer is reserved at `0xF2000000` for 64 MiB. This sits
 between the Marble TZApps reserved region and the UEFI DXE heap without overlap.

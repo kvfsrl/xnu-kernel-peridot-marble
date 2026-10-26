@@ -49,7 +49,7 @@ cd "$(dirname "$(readlink -f "$0")")" || exit 1
 # the kernel and the loader built here, or else the ones that come with the repository
 K=xnu-src/xnu-8796.121.2/BUILD/obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837
 [ -f $K ] || K=prebuilt/mach.development.bcm2837
-L=xnuloader/loader.efi
+L=${XL_LOADER:-xnuloader/loader.efi}
 [ -f $L ] || L=prebuilt/loader.efi
 mkdir -p logs
 # There is one phone, whichever working copy (tools/new-workspace.sh) talks to it: the locks are
@@ -85,7 +85,7 @@ enter() {
 		enter; return ;;
 	esac
 	xnuloader/mkpayload.py -o usb-payload.bin loader.efi=$L --usb >/dev/null &&
-		./mkxnuimg.py -p usb-payload.bin -o xnu-usb.img >/dev/null || { echo "xl: image build failed"; return 1; }
+		${XL_MKXNUIMG:-./mkxnuimg.py} -p usb-payload.bin -o xnu-usb.img >/dev/null || { echo "xl: image build failed"; return 1; }
 	# Right after the phone enters fastboot the first "boot" is sometimes not taken: try twice.
 	local try
 	for try in 1 2; do

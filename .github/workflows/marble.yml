@@ -10,6 +10,8 @@ on:
       - "devices/marble/mkxnuimg.py"
       - "devices/marble/run.sh"
       - "devices/marble/uefi/**"
+      - "xnuloader/**"
+      - "xl"
       - "xnu/files/bsd/dev/hakios.goodix.c"
 
 permissions:
@@ -59,6 +61,11 @@ jobs:
           test -x "$THEOS/toolchain/linux/iphone/bin/ld"
           test -d "$THEOS/sdks/iPhoneOS16.5.sdk/usr/include"
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+
+      - name: Compile Marble-aware XNU loader
+        run: |
+          PLACEHOLDER=1 xnuloader/mkidentity.sh
+          xnuloader/build.sh
 
       - name: Prepare XNU and build Marble touch support
         run: |
