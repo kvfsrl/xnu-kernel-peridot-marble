@@ -4,6 +4,13 @@ on:
   workflow_dispatch:
   push:
     branches: [marble]
+    paths:
+      - ".github/workflows/marble.yml"
+      - "devices/marble/build-uefi.sh"
+      - "devices/marble/mkxnuimg.py"
+      - "devices/marble/run.sh"
+      - "devices/marble/uefi/**"
+      - "xnu/files/bsd/dev/hakios.goodix.c"
 
 permissions:
   contents: read
@@ -89,11 +96,6 @@ jobs:
       - name: Build Marble UEFI loader image
         run: ./devices/marble/build-uefi.sh
 
-      - name: Fetch iOS 16.5 files and build wallpaper userland
-        run: |
-          ./sysimage/fetch.sh
-          REST=1 PREBUILT=1 ./devices/marble/build-userland.sh
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -106,13 +108,3 @@ jobs:
             kernel-build.log
             Mu-Silicium-marble/Build/marblePkg/RELEASE_CLANGPDB/FV/SILICIUM_UEFI.fd
             Mu-Silicium-marble/Build/marblePkg/RELEASE_CLANGPDB/**/*.map
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: marble-userland
-          if-no-files-found: warn
-          retention-days: 14
-          path: |
-            userland/root.apfs
-            userland/system.apfs

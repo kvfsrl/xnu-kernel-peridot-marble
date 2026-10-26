@@ -13,6 +13,10 @@ an XNUP payload. The image starts UEFI/XNULoader so the host can upload a kernel
 and ramdisks through `xl`. Firmware binaries remain dependencies of Mu-Silicium
 and are not copied into this repository.
 
+The fastboot image uses Android boot header v1 to preserve the legacy kernel
+load address fields. Do not use v4 here: this path boots a standalone shim with
+an appended DTB, not a GKI boot/vendor_boot pair.
+
 Run `devices/marble/build-userland.sh` to create the APFS images with
 PosterBoard's launch angel included, then `devices/marble/run.sh` from stock
 fastboot. The phone must already be unlocked for `fastboot boot`.

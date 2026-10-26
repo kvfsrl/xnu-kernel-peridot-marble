@@ -12,4 +12,4 @@ kernel_compression = "gzip"
 append_dtb = true
 
 [boot_image]
-header_version = 4
+header_version = 1
