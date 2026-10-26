@@ -104,6 +104,8 @@ jobs:
             devices/marble/out/marble-uefi.img
             xnu-src/xnu-8796.121.2/BUILD/obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837
             kernel-build.log
+            Mu-Silicium-marble/Build/marblePkg/RELEASE_CLANGPDB/FV/SILICIUM_UEFI.fd
+            Mu-Silicium-marble/Build/marblePkg/RELEASE_CLANGPDB/**/*.map
 
       - uses: actions/upload-artifact@v4
         if: always()

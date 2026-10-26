@@ -24,6 +24,20 @@ install -m 0644 "$HERE/files/Silicon/Silicium/SiliciumPkg/Library/BootManagerLib
 install -m 0644 "$HERE/files/Resources/Configs/marble.toml" "$MU/Resources/Configs/marble.toml"
 install -D -m 0644 "$HERE/files/Platforms/Xiaomi/marble/AcpiTables.inf" \
 	"$MU/Silicium-ACPI/Platforms/Xiaomi/marble/AcpiTables.inf"
+python3 - "$MU/Platforms/Xiaomi/marblePkg/Library/MemoryMapLib/MemoryMapLib.c" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+source = path.read_text()
+anchor = '  {"VM PIL",             0xE0000000, 0x05700000, AddMem, SYS_MEM, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},\n'
+region = '  {"XNU Payload",        0xF0000000, 0x04000000, AddMem, SYS_MEM, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},\n'
+if region not in source:
+    if anchor not in source:
+        raise SystemExit(f"cannot reserve the Marble XNUP buffer in {path}")
+    source = source.replace(anchor, anchor + region, 1)
+    path.write_text(source)
+PY
 python3 - "$MU/Platforms/Xiaomi/marblePkg/DeviceBuild.py" <<'PY'
 from pathlib import Path
 import sys
